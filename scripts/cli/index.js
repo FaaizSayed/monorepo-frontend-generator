@@ -123,9 +123,30 @@ async function setupProject(options) {
   const packagesDir = path.resolve(__dirname, '../../packages');
   const projectDir = path.join(packagesDir, projectName);
 
-  // Create project directory
-  fs.mkdirSync(projectDir, { recursive: true });
+  // Check if project directory already exists
+  if (fs.existsSync(projectDir)) {
+    console.log(`Project directory "${projectName}" already exists.`);
 
+    const { overwrite } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'overwrite',
+        message: `Do you want to delete the existing "${projectName}" directory and create a new project?`,
+        default: false,
+      },
+    ]);
+
+    if (!overwrite) {
+      console.log('Project creation aborted.');
+      process.exit(0);
+    } else {
+      // Remove the existing directory
+      fs.rmSync(projectDir, { recursive: true, force: true });
+      console.log(`Deleted existing directory "${projectName}".`);
+    }
+  }
+
+  // Proceed with project creation
   console.log(`Creating project ${projectName} with ${framework} in ${language}...`);
 
   try {
@@ -162,18 +183,26 @@ async function setupProject(options) {
 async function createReactApp(projectDir, language, reactOptions, useESLint) {
   const template = language === 'TypeScript' ? '--template typescript' : '';
 
-  // Get the parent directory and project name
   const packagesDir = path.resolve(__dirname, '../../packages');
   const projectName = path.basename(projectDir);
 
   // Ensure the packages directory exists
   fs.mkdirSync(packagesDir, { recursive: true });
 
-  // Change to the packages directory
-  process.chdir(packagesDir);
-
-  // Run create-react-app with the project name
-  await execa.command(`npx create-react-app ${projectName} ${template}`, { stdio: 'inherit', shell: true });
+  try {
+    // Run create-react-app with the project name
+    await execa.command(`npx create-react-app ${projectName} ${template}`, {
+      stdio: 'inherit',
+      shell: true,
+      cwd: packagesDir,
+    });
+  } catch (error) {
+    console.error(`Failed to create React app: ${error.shortMessage}`);
+    if (error.stderr) {
+      console.error('Error details:', error.stderr);
+    }
+    process.exit(1);
+  }
 
   // Navigate to the project directory
   process.chdir(projectDir);
@@ -181,17 +210,86 @@ async function createReactApp(projectDir, language, reactOptions, useESLint) {
   const dependencies = [];
   const devDependencies = [];
 
-  // ... rest of your code
-}
+  // Install React Router if selected
+  if (reactOptions.includeReactRouter) {
+    dependencies.push('react-router-dom');
+    if (language === 'TypeScript') {
+      devDependencies.push('@types/react-router-dom');
+    }
+  }
 
+  // Install State Management Library if selected
+  if (reactOptions.useStateManagement && reactOptions.stateManagementLib !== 'None') {
+    switch (reactOptions.stateManagementLib) {
+      case 'Redux Toolkit':
+        dependencies.push('@reduxjs/toolkit', 'react-redux');
+        if (language === 'TypeScript') {
+          devDependencies.push('@types/react-redux');
+        }
+        break;
+      case 'Redux Saga':
+        dependencies.push('redux', 'redux-saga', 'react-redux');
+        if (language === 'TypeScript') {
+          devDependencies.push('@types/react-redux');
+        }
+        break;
+      case 'Zustand':
+        dependencies.push('zustand');
+        break;
+      case 'MobX':
+        dependencies.push('mobx', 'mobx-react');
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Install ESLint if selected
+  if (useESLint) {
+    devDependencies.push('eslint');
+    // Additional ESLint configuration can be added here
+  }
+
+  if (dependencies.length > 0) {
+    console.log('Installing additional dependencies...');
+    await execa.command(`npm install ${dependencies.join(' ')}`, { stdio: 'inherit', shell: true });
+  }
+
+  if (devDependencies.length > 0) {
+    console.log('Installing additional devDependencies...');
+    await execa.command(`npm install -D ${devDependencies.join(' ')}`, { stdio: 'inherit', shell: true });
+  }
+}
 
 async function createVueApp(projectDir, language, useESLint) {
   const template = language === 'TypeScript' ? '--template vue-ts' : '--template vue';
-  await execa.command(`npm init vite@latest ${projectDir} ${template}`, { stdio: 'inherit', shell: true });
-  await execa.command(`cd ${projectDir} && npm install`, { stdio: 'inherit', shell: true });
 
-  // Navigate to project directory
+  const packagesDir = path.resolve(__dirname, '../../packages');
+  const projectName = path.basename(projectDir);
+
+  // Ensure the packages directory exists
+  fs.mkdirSync(packagesDir, { recursive: true });
+
+  // Run npm init vite@latest with the project name
+  try {
+    await execa.command(`npm init vite@latest ${projectName} ${template} -y`, {
+      stdio: 'inherit',
+      shell: true,
+      cwd: packagesDir,
+    });
+  } catch (error) {
+    console.error(`Failed to create Vue app: ${error.shortMessage}`);
+    if (error.stderr) {
+      console.error('Error details:', error.stderr);
+    }
+    process.exit(1);
+  }
+
+  // Navigate to the project directory
   process.chdir(projectDir);
+
+  // Install dependencies
+  await execa.command(`npm install`, { stdio: 'inherit', shell: true });
 
   // Install ESLint if selected
   if (useESLint) {
@@ -203,11 +301,33 @@ async function createVueApp(projectDir, language, useESLint) {
 
 async function createSolidApp(projectDir, language, useESLint) {
   const template = language === 'TypeScript' ? 'ts' : 'js';
-  await execa.command(`npx degit solidjs/templates/${template} ${projectDir}`, { stdio: 'inherit', shell: true });
-  await execa.command(`cd ${projectDir} && npm install`, { stdio: 'inherit', shell: true });
 
-  // Navigate to project directory
+  const packagesDir = path.resolve(__dirname, '../../packages');
+  const projectName = path.basename(projectDir);
+
+  // Ensure the packages directory exists
+  fs.mkdirSync(packagesDir, { recursive: true });
+
+  // Run npx degit to create the project
+  try {
+    await execa.command(`npx degit solidjs/templates/${template} ${projectName}`, {
+      stdio: 'inherit',
+      shell: true,
+      cwd: packagesDir,
+    });
+  } catch (error) {
+    console.error(`Failed to create Solid app: ${error.shortMessage}`);
+    if (error.stderr) {
+      console.error('Error details:', error.stderr);
+    }
+    process.exit(1);
+  }
+
+  // Navigate to the project directory
   process.chdir(projectDir);
+
+  // Install dependencies
+  await execa.command(`npm install`, { stdio: 'inherit', shell: true });
 
   // Install ESLint if selected
   if (useESLint) {
@@ -219,9 +339,29 @@ async function createSolidApp(projectDir, language, useESLint) {
 
 async function createRemixApp(projectDir, language, useESLint) {
   const args = language === 'TypeScript' ? '--typescript' : '';
-  await execa.command(`npx create-remix@latest ${projectDir} ${args}`, { stdio: 'inherit', shell: true });
 
-  // Navigate to project directory
+  const packagesDir = path.resolve(__dirname, '../../packages');
+  const projectName = path.basename(projectDir);
+
+  // Ensure the packages directory exists
+  fs.mkdirSync(packagesDir, { recursive: true });
+
+  // Run npx create-remix@latest
+  try {
+    await execa.command(`npx create-remix@latest ${projectName} ${args}`, {
+      stdio: 'inherit',
+      shell: true,
+      cwd: packagesDir,
+    });
+  } catch (error) {
+    console.error(`Failed to create Remix app: ${error.shortMessage}`);
+    if (error.stderr) {
+      console.error('Error details:', error.stderr);
+    }
+    process.exit(1);
+  }
+
+  // Navigate to the project directory
   process.chdir(projectDir);
 
   // Install ESLint if selected
@@ -234,9 +374,29 @@ async function createRemixApp(projectDir, language, useESLint) {
 
 async function createNextApp(projectDir, language, useESLint) {
   const args = language === 'TypeScript' ? '--typescript' : '';
-  await execa.command(`npx create-next-app@latest ${projectDir} ${args}`, { stdio: 'inherit', shell: true });
 
-  // Navigate to project directory
+  const packagesDir = path.resolve(__dirname, '../../packages');
+  const projectName = path.basename(projectDir);
+
+  // Ensure the packages directory exists
+  fs.mkdirSync(packagesDir, { recursive: true });
+
+  // Run npx create-next-app@latest
+  try {
+    await execa.command(`npx create-next-app@latest ${projectName} ${args}`, {
+      stdio: 'inherit',
+      shell: true,
+      cwd: packagesDir,
+    });
+  } catch (error) {
+    console.error(`Failed to create Next.js app: ${error.shortMessage}`);
+    if (error.stderr) {
+      console.error('Error details:', error.stderr);
+    }
+    process.exit(1);
+  }
+
+  // Navigate to the project directory
   process.chdir(projectDir);
 
   // Install ESLint if selected
