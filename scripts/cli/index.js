@@ -161,64 +161,29 @@ async function setupProject(options) {
 
 async function createReactApp(projectDir, language, reactOptions, useESLint) {
   const template = language === 'TypeScript' ? '--template typescript' : '';
-  await execa.command(`npx create-react-app ${projectDir} ${template}`, { stdio: 'inherit', shell: true });
 
-  // Navigate to project directory
+  // Get the parent directory and project name
+  const packagesDir = path.resolve(__dirname, '../../packages');
+  const projectName = path.basename(projectDir);
+
+  // Ensure the packages directory exists
+  fs.mkdirSync(packagesDir, { recursive: true });
+
+  // Change to the packages directory
+  process.chdir(packagesDir);
+
+  // Run create-react-app with the project name
+  await execa.command(`npx create-react-app ${projectName} ${template}`, { stdio: 'inherit', shell: true });
+
+  // Navigate to the project directory
   process.chdir(projectDir);
 
   const dependencies = [];
   const devDependencies = [];
 
-  // Install React Router if selected
-  if (reactOptions.includeReactRouter) {
-    dependencies.push('react-router-dom');
-    if (language === 'TypeScript') {
-      devDependencies.push('@types/react-router-dom');
-    }
-  }
-
-  // Install State Management Library if selected
-  if (reactOptions.useStateManagement && reactOptions.stateManagementLib !== 'None') {
-    switch (reactOptions.stateManagementLib) {
-      case 'Redux Toolkit':
-        dependencies.push('@reduxjs/toolkit', 'react-redux');
-        if (language === 'TypeScript') {
-          devDependencies.push('@types/react-redux');
-        }
-        break;
-      case 'Redux Saga':
-        dependencies.push('redux', 'redux-saga', 'react-redux');
-        if (language === 'TypeScript') {
-          devDependencies.push('@types/react-redux');
-        }
-        break;
-      case 'Zustand':
-        dependencies.push('zustand');
-        break;
-      case 'MobX':
-        dependencies.push('mobx', 'mobx-react');
-        break;
-      default:
-        break;
-    }
-  }
-
-  // Install ESLint if selected
-  if (useESLint) {
-    devDependencies.push('eslint');
-    // You can add more ESLint plugins or configs based on preferences
-  }
-
-  if (dependencies.length > 0) {
-    console.log('Installing additional dependencies...');
-    await execa.command(`npm install ${dependencies.join(' ')}`, { stdio: 'inherit', shell: true });
-  }
-
-  if (devDependencies.length > 0) {
-    console.log('Installing additional devDependencies...');
-    await execa.command(`npm install -D ${devDependencies.join(' ')}`, { stdio: 'inherit', shell: true });
-  }
+  // ... rest of your code
 }
+
 
 async function createVueApp(projectDir, language, useESLint) {
   const template = language === 'TypeScript' ? '--template vue-ts' : '--template vue';
